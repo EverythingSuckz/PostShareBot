@@ -1,15 +1,21 @@
 import re
+import sys
 import asyncio
+import logging
+import traceback
 from os import getenv
+from functools import wraps
 from dotenv import load_dotenv
-from pyrogram.errors import PeerIdInvalid
 from pyrogram import Client, filters, idle
 from sqlalchemy import Column, String, create_engine
 from sqlalchemy.ext.declarative import declarative_base
 from sqlalchemy.orm import scoped_session, sessionmaker
+from pyrogram.errors import PeerIdInvalid, ChannelInvalid, ChatWriteForbidden
 from pyrogram.types import Message, CallbackQuery, InlineKeyboardButton, InlineKeyboardMarkup
 
 load_dotenv()
+
+loop = asyncio.get_event_loop()
 
 API_ID = int(getenv('API_ID', 12345))
 API_HASH = str(getenv('API_HASH', ''))
@@ -18,7 +24,6 @@ LOG_GROUP = int(getenv('LOG_GROUP'))
 POST_CHANNEL = getenv('POST_CHANNEL')
 DB_URI = getenv('DB_URI').replace('postgres', 'postgresql')
 
-loop = asyncio.get_event_loop()
 
 AniMemeBot = Client(
     "postbot",
@@ -26,6 +31,13 @@ AniMemeBot = Client(
     api_hash=API_HASH,
     bot_token=BOT_TOKEN
 )
+
+logging.basicConfig(
+    level=logging.INFO,
+    format="%(asctime)s - %(name)s - %(levelname)s - %(message)s"
+)
+logging.getLogger("pyrogram").setLevel(logging.WARNING)
+logging.getLogger("asyncio").setLevel(logging.WARNING)
 
 class DataBase:
     def __init__(self) -> scoped_session:
@@ -65,6 +77,37 @@ class BannedUsers(db.BASE):
 
 BannedUsers.__table__.create(checkfirst=True)
 
+
+def report_errors(func):
+    @wraps(func)
+    async def capture(client: Client, cb: CallbackQuery, *args, **kwargs):
+        try:
+            return await func(client, cb, *args, **kwargs)
+        except ChatWriteForbidden:
+            msg = "Bot is muted in {}".format(cb.message.chat.title)
+            try:
+                await client.send_message(LOG_GROUP, msg)
+            except ChatWriteForbidden or PeerIdInvalid:
+                ...
+            logging.error(msg)
+        except PeerIdInvalid:
+            msg = 'Try demoting and promoting the bot again in post channel!'
+            try:
+                await cb.answer('Oh no..Something went wrong!')
+                await client.send_message(LOG_GROUP, msg)
+            except ChatWriteForbidden or PeerIdInvalid:
+                ...
+            logging.error(msg)
+        except Exception:
+            try:
+                await cb.answer('Oh no..Something went wrong!')
+                await client.send_message(LOG_GROUP, "**Error:**\n" + f"`{traceback.format_exc()}`")
+            except ChatWriteForbidden or PeerIdInvalid:
+                ...
+            logging.error(traceback.format_exc())
+    return capture
+
+
 @AniMemeBot.on_message(filters.private, group=-100)
 async def checkban(_, m: Message):
     if db.is_banned(m.from_user.id):
@@ -78,7 +121,7 @@ async def _(_, c: CallbackQuery):
 
 @AniMemeBot.on_message(filters.command(['start', 'help']) & filters.private)
 async def say_hi(_, m: Message):
-    await m.reply('Send your meme here!')
+    await m.reply('Send your content here!')
 
 @AniMemeBot.on_message((filters.photo|filters.video|filters.audio|filters.animation|filters.document) & filters.private)
 async def ask_confirm(_, m: Message):
@@ -90,11 +133,13 @@ async def ask_confirm(_, m: Message):
     quote=True)
 
 @AniMemeBot.on_callback_query(filters.regex(pattern=r'^(yes|no)$'))
+@report_errors
 async def confirmation(_, c: CallbackQuery):
     cb = c.matches[0].group(1)
+    replied = c.message.reply_to_message
     await c.answer('alright!')
     if cb == 'yes':
-        await c.message.reply_to_message.copy(LOG_GROUP, reply_markup=InlineKeyboardMarkup([[
+        await replied.copy(LOG_GROUP, caption=f"{replied.caption if replied.caption else ''}\n\nSubmitted by: {c.from_user.mention(style='md')}", reply_markup=InlineKeyboardMarkup([[
             InlineKeyboardButton('post', f'post_{c.from_user.id}'),
             InlineKeyboardButton('🗑', f'dump_{c.from_user.id}'),
         ]]))
@@ -103,12 +148,16 @@ async def confirmation(_, c: CallbackQuery):
         await c.edit_message_text('If you say so..')
 
 @AniMemeBot.on_callback_query(filters.regex(pattern=r'^(post|dump)_(\d+)$'))
+@report_errors
 async def post_or_dump(_, c: CallbackQuery):
     cb = c.matches[0].group(1)
     cb_user = c.matches[0].group(2)
     await c.answer('alright!')
     if cb == 'post':
-        await c.message.copy(POST_CHANNEL, caption=re.sub(r'🗑 \.\.was dumped((.|\n)*)', '', c.message.caption, flags=re.MULTILINE) if c.message.caption else None,reply_markup=None)
+        await c.message.copy(
+            POST_CHANNEL,
+            caption=
+                re.sub(r'Submitted by.*', '', re.sub(r'🗑 \.\.was dumped((.|\n)*)', '', c.message.caption, flags=re.MULTILINE)) if c.message.caption else None,reply_markup=None)
         await c.edit_message_caption(f'#Posted by {c.from_user.mention(style="md")}')
     else:
         await c.message.edit_caption(f'{c.message.caption if c.message.caption else ""}🗑 ..was dumped to the place where this meme was supposed to be in!\n\n#Dumped by: {c.from_user.mention(style="md")}',
@@ -177,11 +226,15 @@ async def start_bot():
     try:
         logchat = await AniMemeBot.get_chat(chat_id=LOG_GROUP)
         if not (logchat.type == "supergroup") or (logchat.type == "group"):
-            print("The log chat is not a group.. exitting!")
+            logging.error("The log chat is not a group.. exitting!")
             exit()
-        print(f'pyrogram started on @{bot.username} in chat {logchat.title}!')
+        logging.info(f'pyrogram started on @{bot.username} in chat {logchat.title}!')
     except PeerIdInvalid:
-        print(f'pyrogram started on @{bot.username}!')
+        logging.info(f'pyrogram started on @{bot.username}!')
+    except ChannelInvalid:
+        logging.warning('The bot isn\'t a member in the log group, please consider adding it and promoting the bot as an admin before using the bot.')
+        logging.info(f'pyrogram started on @{bot.username}!')
+        ...
     await idle()
 
 if __name__ == "__main__":
