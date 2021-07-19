@@ -12,6 +12,7 @@ A bot where the subscribers can send their own content to the channel admins and
 ```sh
 git clone https://github.com/EverythingSuckz/PostShareBot
 cd PostShareBot
+pip3.9 install -r requirements.txt
 # create a .env file and add all the variables there
 python3.9 bot.py
 ```
