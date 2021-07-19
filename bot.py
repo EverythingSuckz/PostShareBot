@@ -1,3 +1,4 @@
+import re
 import asyncio
 from os import getenv
 from dotenv import load_dotenv
@@ -107,10 +108,10 @@ async def post_or_dump(_, c: CallbackQuery):
     cb_user = c.matches[0].group(2)
     await c.answer('alright!')
     if cb == 'post':
-        await c.message.copy(POST_CHANNEL, reply_markup=None)
+        await c.message.copy(POST_CHANNEL, caption=re.sub(r'🗑 \.\.was dumped((.|\n)*)', '', c.message.caption, flags=re.MULTILINE) if c.message.caption else None,reply_markup=None)
         await c.edit_message_caption(f'#Posted by {c.from_user.mention(style="md")}')
     else:
-        await c.message.edit_caption('🗑 ..was dumped to the place where this meme was supposed to be in!\n\n#Dumped by: {}'.format(c.from_user.mention(style='md')),
+        await c.message.edit_caption(f'{c.message.caption if c.message.caption else ""}🗑 ..was dumped to the place where this meme was supposed to be in!\n\n#Dumped by: {c.from_user.mention(style="md")}',
             reply_markup=InlineKeyboardMarkup([[InlineKeyboardButton('no, post it', f'post_{cb_user}')]]))
 
 
@@ -175,7 +176,6 @@ async def start_bot():
     bot = await AniMemeBot.get_me()
     try:
         logchat = await AniMemeBot.get_chat(chat_id=LOG_GROUP)
-        print(logchat.type == "supergroup")
         if not (logchat.type == "supergroup") or (logchat.type == "group"):
             print("The log chat is not a group.. exitting!")
             exit()

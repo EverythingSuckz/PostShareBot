@@ -26,7 +26,23 @@ LOG_GROUP=
 POST_CHANNEL=
 ```
 
-Report your issues and doubts at the [Support Chat](https://t.me/WhyThisUsername)
+### Mandatory Variables
+
+`API_ID` : Goto [my.telegram.org](https://my.telegram.org) to obtain this.
+
+`API_HASH` : Goto [my.telegram.org](https://my.telegram.org) to obtain this.
+
+`BOT_TOKEN` : Get the bot token from [@BotFather](https://telegram.dog/BotFather).
+
+`DB_URI` : Get this value from [ElephantSQL](http://elephantsql.com/).
+
+`LOG_GROUP` : Create a new group (private), add [@missrose_bot](https://telegram.dog/MissRose_bot) and type `/id`. Now copy paste the ID into this field.
+**Note**: The should be either a group or a [supergroup](https://telegram.org/blog/supergroups).
+
+`POST_CHANNEL` : The channel where you want the approved posts to be posted in. If your channel is public, then you may pass the channel username here or if it's private, then you'll have to do some extra works, like forward any post from your private channel to [@missrose_bot](https://telegram.dog/MissRose_bot) and reply `/id`. Now copy paste the channel ID into this field.
+
+
+Report your issues and doubts at the [Support Chat](https://t.me/WhyThisUsername).
 
 ## License 
 
