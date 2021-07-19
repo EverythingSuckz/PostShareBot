@@ -82,7 +82,7 @@ async def say_hi(_, m: Message):
 
 @AniMemeBot.on_message((filters.photo|filters.video|filters.audio|filters.animation|filters.document) & filters.private)
 async def ask_confirm(_, m: Message):
-    await m.reply('Are you sure you want to forward this to admin?',
+    await m.reply('Are you sure you want to submit this content?',
     reply_markup=InlineKeyboardMarkup([[
         InlineKeyboardButton('yes', 'yes'),
         InlineKeyboardButton('no', 'no'),
